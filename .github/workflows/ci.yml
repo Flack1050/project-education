@@ -12,6 +12,21 @@ jobs:
   test:
     runs-on: ubuntu-latest
 
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: notesdb
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d notesdb"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -32,3 +47,18 @@ jobs:
         working-directory: backend
         run: |
           python -m compileall .
+
+      - name: Start backend
+        working-directory: backend
+        env:
+          DB_HOST: localhost
+          DB_NAME: notesdb
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+        run: |
+          python app.py &
+          sleep 5
+
+      - name: Test API
+        run: |
+          curl --fail http://localhost:5000/notes

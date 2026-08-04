@@ -60,4 +60,15 @@ jobs:
 
       - name: Test API
         run: |
-          curl --fail http://localhost:5000/notes
+          curl --fail \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -d '{"content":"CI test note"}' \
+            http://localhost:5000/notes
+
+          response=$(curl --fail http://localhost:5000/notes)
+
+          echo "API response:"
+          echo "$response"
+
+          echo "$response" | grep -q "CI test note"

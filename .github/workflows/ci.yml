@@ -102,7 +102,7 @@ jobs:
             -t ghcr.io/$IMAGE_OWNER/notes-frontend:latest \
             ./frontend
 
-       - name: Push backend image
+      - name: Push backend image
         run: |
           IMAGE_OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
           docker push ghcr.io/$IMAGE_OWNER/notes-backend:latest

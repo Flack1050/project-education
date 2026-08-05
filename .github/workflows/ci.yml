@@ -72,3 +72,11 @@ jobs:
           echo "$response"
 
           echo "$response" | grep -q "CI test note"
+
+      - name: Build backend Docker image
+        run: |
+          docker build -t notes-backend:test ./backend
+
+      - name: Build frontend Docker image
+        run: |
+          docker build -t notes-frontend:test ./frontend         

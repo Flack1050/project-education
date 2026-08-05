@@ -90,20 +90,24 @@ jobs:
 
       - name: Build backend image
         run: |
+          IMAGE_OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
           docker build \
-            -t ghcr.io/${{ github.repository_owner }}/notes-backend:latest \
+            -t ghcr.io/$IMAGE_OWNER/notes-backend:latest \
             ./backend
 
       - name: Build frontend image
         run: |
+          IMAGE_OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
           docker build \
-            -t ghcr.io/${{ github.repository_owner }}/notes-frontend:latest \
+            -t ghcr.io/$IMAGE_OWNER/notes-frontend:latest \
             ./frontend
 
-      - name: Push backend image
+       - name: Push backend image
         run: |
-          docker push ghcr.io/${{ github.repository_owner }}/notes-backend:latest
+          IMAGE_OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          docker push ghcr.io/$IMAGE_OWNER/notes-backend:latest
 
       - name: Push frontend image
         run: |
-          docker push ghcr.io/${{ github.repository_owner }}/notes-frontend:latest           
+          IMAGE_OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          docker push ghcr.io/$IMAGE_OWNER/notes-frontend:latest        

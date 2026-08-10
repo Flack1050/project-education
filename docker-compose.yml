@@ -12,7 +12,7 @@ services:
       - backend
 
   backend:
-    build: ./backend
+    image: ghcr.io/flack1050/notes-backend:latest
     environment:
       DB_HOST: db
       DB_NAME: notesdb
@@ -28,7 +28,7 @@ services:
       retries: 5
 
   frontend:
-    build: ./frontend
+    image: ghcr.io/flack1050/notes-frontend:latest
 
   db:
     image: postgres:16

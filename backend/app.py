@@ -41,19 +41,6 @@ conn.commit()
 
 
 @app.route("/notes", methods=["GET"])
-def get_notes():
-    cur.execute("SELECT * FROM notes")
-    rows = cur.fetchall()
-
-    notes = []
-
-    for row in rows:
-        notes.append({
-            "id": row[0],
-            "content": row[1]
-        })
-
-    return jsonify(notes)
 
 
 @app.route("/notes", methods=["POST"])

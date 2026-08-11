@@ -140,6 +140,14 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Create environment file
+        env:
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+        run: |
+          cat > .env <<EOF
+          DB_PASSWORD=$DB_PASSWORD
+          EOF
+
       - name: Deploy
         env:
           IMAGE_TAG: ${{ needs.build.outputs.image_tag }}
@@ -169,6 +177,7 @@ jobs:
           docker compose pull
 
           echo "Starting new version..."
+
           if docker compose up -d --wait --wait-timeout 60; then
             echo "Deployment successful."
 
@@ -201,11 +210,3 @@ jobs:
 
             exit 1
           fi
-
-      - name: Create environment file
-        env:
-          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
-        run: |
-          cat > .env <<EOF
-          DB_PASSWORD=$DB_PASSWORD
-          EOF

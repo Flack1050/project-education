@@ -1,7 +1,9 @@
+```python
 from flask import Flask, request, jsonify
-import psycopg2
-import os
 from flask_cors import CORS
+import psycopg2
+from psycopg2 import OperationalError
+import os
 import time
 
 app = Flask(__name__)
@@ -12,63 +14,111 @@ DB_NAME = os.getenv("DB_NAME", "notesdb")
 DB_USER = os.getenv("DB_USER", "postgres")
 DB_PASSWORD = os.getenv("DB_PASSWORD", "postgres")
 
-while True:
+
+def get_connection():
+    return psycopg2.connect(
+        host=DB_HOST,
+        database=DB_NAME,
+        user=DB_USER,
+        password=DB_PASSWORD
+    )
+
+
+def wait_for_database():
+    while True:
+        try:
+            conn = get_connection()
+            conn.close()
+
+            print("Connected to database")
+            return
+
+        except OperationalError:
+            print("Database not ready, retrying...")
+            time.sleep(2)
+
+
+def init_database():
+    conn = get_connection()
+
     try:
-        conn = psycopg2.connect(
-            host=DB_HOST,
-            database=DB_NAME,
-            user=DB_USER,
-            password=DB_PASSWORD
-        )
+        cur = conn.cursor()
 
-        print("Connected to database")
-        break
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS notes (
+                id SERIAL PRIMARY KEY,
+                content TEXT NOT NULL
+            )
+        """)
 
-    except psycopg2.OperationalError:
-        print("Database not ready, retrying...")
-        time.sleep(2)
+        conn.commit()
+        cur.close()
 
-cur = conn.cursor()
-
-cur.execute("""
-CREATE TABLE IF NOT EXISTS notes (
-    id SERIAL PRIMARY KEY,
-    content TEXT NOT NULL
-)
-""")
-
-conn.commit()
+    finally:
+        conn.close()
 
 
 @app.route("/notes", methods=["GET"])
 def get_notes():
-    cur.execute("SELECT * FROM notes")
-    rows = cur.fetchall()
+    conn = get_connection()
 
-    notes = []
+    try:
+        cur = conn.cursor()
 
-    for row in rows:
-        notes.append({
-            "id": row[0],
-            "content": row[1]
-        })
+        cur.execute("SELECT id, content FROM notes ORDER BY id")
+        rows = cur.fetchall()
 
-    return jsonify(notes)
+        notes = [
+            {
+                "id": row[0],
+                "content": row[1]
+            }
+            for row in rows
+        ]
+
+        cur.close()
+
+        return jsonify(notes)
+
+    finally:
+        conn.close()
 
 
 @app.route("/notes", methods=["POST"])
 def add_note():
-    data = request.json
+    data = request.get_json()
 
-    cur.execute(
-        "INSERT INTO notes (content) VALUES (%s)",
-        (data["content"],)
-    )
+    if not data or "content" not in data:
+        return jsonify({
+            "error": "content is required"
+        }), 400
 
-    conn.commit()
+    conn = get_connection()
 
-    return jsonify({"status": "ok"})
+    try:
+        cur = conn.cursor()
+
+        cur.execute(
+            "INSERT INTO notes (content) VALUES (%s)",
+            (data["content"],)
+        )
+
+        conn.commit()
+        cur.close()
+
+        return jsonify({
+            "status": "ok"
+        }), 201
+
+    finally:
+        conn.close()
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    wait_for_database()
+    init_database()
+
+    app.run(
+        host="0.0.0.0",
+        port=5000
+    )

@@ -22,11 +22,18 @@ services:
       db:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/notes"]
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:5000/notes')"
+        ]
       interval: 10s
       timeout: 5s
       retries: 5
-
+      start_period: 10s 
+      
   frontend:
     image: ghcr.io/flack1050/notes-frontend:${IMAGE_TAG}
 

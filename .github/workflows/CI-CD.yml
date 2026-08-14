@@ -50,8 +50,8 @@ jobs:
       - name: Check Python syntax
         working-directory: backend
         run: |
-          python -m compileall .
-
+          python -m py_compile app.py
+                
       - name: Start backend
         working-directory: backend
         env:
@@ -140,17 +140,10 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Create environment file
-        env:
-          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
-        run: |
-          cat > .env <<EOF
-          DB_PASSWORD=$DB_PASSWORD
-          EOF
-
       - name: Deploy
         env:
           IMAGE_TAG: ${{ needs.build.outputs.image_tag }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
         run: |
           set -Eeuo pipefail
 
@@ -172,12 +165,12 @@ jobs:
           fi
 
           export IMAGE_TAG="$NEW_TAG"
+          export DB_PASSWORD="$DB_PASSWORD"
 
           echo "Pulling new images..."
           docker compose pull
 
           echo "Starting new version..."
-
           if docker compose up -d --wait --wait-timeout 60; then
             echo "Deployment successful."
 

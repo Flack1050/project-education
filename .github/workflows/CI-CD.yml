@@ -130,8 +130,19 @@ jobs:
     runs-on: self-hosted
 
     steps:
+
       - name: Checkout repository
         uses: actions/checkout@v4
+
+
+      - name: Create environment file
+        env:
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+        run: |
+          cat > .env <<EOF
+          DB_PASSWORD=$DB_PASSWORD
+          EOF
+
 
       - name: Login to GHCR
         uses: docker/login-action@v3
@@ -140,10 +151,10 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+
       - name: Deploy
         env:
           IMAGE_TAG: ${{ needs.build.outputs.image_tag }}
-          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
         run: |
           set -Eeuo pipefail
 
@@ -164,42 +175,45 @@ jobs:
             echo "No previous version found."
           fi
 
+
           export IMAGE_TAG="$NEW_TAG"
-          export DB_PASSWORD="$DB_PASSWORD"
+
 
           echo "Pulling new images..."
           docker compose pull
 
+
           echo "Starting new version..."
+
           if docker compose up -d --wait --wait-timeout 60; then
+
             echo "Deployment successful."
 
             echo "$NEW_TAG" > "$STATE_FILE"
 
-            echo "Running containers:"
             docker compose ps
 
           else
+
             echo "Deployment failed!"
 
             if [ -n "$OLD_TAG" ]; then
-              echo "Rolling back to $OLD_TAG..."
+
+              echo "Rolling back..."
 
               export IMAGE_TAG="$OLD_TAG"
 
               docker compose pull
               docker compose up -d --wait --wait-timeout 60
 
-              echo "Rollback completed."
-
               echo "$OLD_TAG" > "$STATE_FILE"
 
-              docker compose ps
-
             else
-              echo "No previous version available for rollback."
+
               exit 1
+
             fi
 
             exit 1
-          fi
+
+          fi     

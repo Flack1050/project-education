@@ -7,3 +7,7 @@ __pycache__/
 *.pyc
 
 .git/
+
+# Secrets
+secrets/
+nginx/.htpasswd

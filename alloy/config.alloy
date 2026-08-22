@@ -1,42 +1,75 @@
+logging {
+  level  = "info"
+  format = "logfmt"
+}
+
 discovery.docker "containers" {
   host             = "unix:///var/run/docker.sock"
   refresh_interval = "5s"
 }
 
-discovery.relabel "containers" {
-  targets = []
+discovery.relabel "docker_logs" {
+  targets = discovery.docker.containers.targets
 
   rule {
     source_labels = ["__meta_docker_container_name"]
     regex         = "/(.*)"
     target_label  = "container"
   }
+
+  rule {
+    source_labels = ["__meta_docker_container_log_stream"]
+    target_label  = "stream"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_label_service_name"]
+    target_label  = "service_name"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "job"
+  }
 }
 
-loki.source.docker "containers" {
+loki.source.docker "default" {
   host             = "unix:///var/run/docker.sock"
-  targets          = discovery.docker.containers.targets
-  forward_to       = [loki.process.containers.receiver]
-  relabel_rules    = discovery.relabel.containers.rules
+  targets          = discovery.relabel.docker_logs.output
+  forward_to       = [loki.process.docker_logs.receiver]
   refresh_interval = "5s"
+  labels = {
+    "env" = "production",
+  }
 }
 
-loki.process "containers" {
+loki.process "docker_logs" {
   stage.static_labels {
     values = {
-      environment = "local",
+      "cluster" = "notes-app",
     }
   }
 
-  forward_to = [loki.write.default.receiver]
-}
-
-loki.write "default" {
-  endpoint {
-    url = "http://loki:3100/loki/api/v1/push"
+  stage.json {
+    expressions = {
+      "level" = "level",
+      "msg"   = "msg",
+    }
   }
+
+  stage.labels {
+    values = {
+      "level" = "level",
+    }
+  }
+
+  forward_to = [loki.write.local.receiver]
 }
 
-livedebugging {
-  enabled = true
+loki.write "local" {
+  endpoint {
+    name = "loki"
+    url  = "http://loki:3100/loki/api/v1/push"
+  }
 }

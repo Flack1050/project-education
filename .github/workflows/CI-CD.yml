@@ -2,24 +2,26 @@ name: CI/CD
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   pull_request:
-    branches:
-      - main
+    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
   packages: write
 
-jobs:
+env:
+  REGISTRY: ghcr.io
+  IMAGE_OWNER: ${{ github.repository_owner }}
 
+jobs:
   test:
     runs-on: ubuntu-latest
 
     services:
       postgres:
-        image: postgres:16
+        image: postgres:16-alpine
         env:
           POSTGRES_DB: notesdb
           POSTGRES_USER: postgres
@@ -45,13 +47,13 @@ jobs:
         working-directory: backend
         run: |
           python -m venv venv
+          venv/bin/pip install --upgrade pip
           venv/bin/pip install -r requirements.txt
 
       - name: Check Python syntax
         working-directory: backend
-        run: |
-          python -m py_compile app.py
-                
+        run: python -m py_compile app.py
+
       - name: Start backend
         working-directory: backend
         env:
@@ -61,159 +63,186 @@ jobs:
           DB_PASSWORD: postgres
         run: |
           venv/bin/python app.py &
-          sleep 5
+          echo "Waiting for backend..."
+          for i in {1..30}; do
+            if curl -fs http://localhost:5000/health > /dev/null 2>&1; then
+              echo "Backend is ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Backend failed to start"
+          exit 1
 
       - name: Test API
         run: |
-          curl --fail \
-            -X POST \
+          curl --fail -X POST \
             -H "Content-Type: application/json" \
             -d '{"content":"CI test note"}' \
             http://localhost:5000/notes
 
           response=$(curl --fail http://localhost:5000/notes)
-
-          echo "API response:"
-          echo "$response"
-
+          echo "API response: $response"
           echo "$response" | grep -q "CI test note"
 
   build:
     needs: test
     runs-on: ubuntu-latest
-
     outputs:
       image_tag: ${{ steps.meta.outputs.image_tag }}
+      image_owner_lower: ${{ steps.meta.outputs.image_owner_lower }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Login to GHCR
         uses: docker/login-action@v3
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set image tag
+      - name: Generate image metadata
         id: meta
         run: |
+          OWNER_LOWER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          echo "image_owner_lower=$OWNER_LOWER" >> "$GITHUB_OUTPUT"
           echo "image_tag=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
-          echo "IMAGE_OWNER=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
 
-      - name: Build backend image
-        run: |
-          docker build \
-            -t ghcr.io/$IMAGE_OWNER/notes-backend:${{ steps.meta.outputs.image_tag }} \
-            ./backend
+      - name: Build and push backend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ steps.meta.outputs.image_owner_lower }}/notes-backend:${{ steps.meta.outputs.image_tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
-      - name: Build frontend image
-        run: |
-          docker build \
-            -t ghcr.io/$IMAGE_OWNER/notes-frontend:${{ steps.meta.outputs.image_tag }} \
-            ./frontend
-
-      - name: Push backend image
-        run: |
-          docker push \
-            ghcr.io/$IMAGE_OWNER/notes-backend:${{ steps.meta.outputs.image_tag }}
-
-      - name: Push frontend image
-        run: |
-          docker push \
-            ghcr.io/$IMAGE_OWNER/notes-frontend:${{ steps.meta.outputs.image_tag }}
+      - name: Build and push frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ steps.meta.outputs.image_owner_lower }}/notes-frontend:${{ steps.meta.outputs.image_tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   deploy:
     needs: build
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: self-hosted
+    timeout-minutes: 10
+    concurrency:
+      group: production-deploy
+      cancel-in-progress: false
+
+    env:
+      IMAGE_TAG: ${{ needs.build.outputs.image_tag }}
+      IMAGE_OWNER: ${{ needs.build.outputs.image_owner_lower }}
+      DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
 
     steps:
-
       - name: Checkout repository
         uses: actions/checkout@v4
 
-
-      - name: Create environment file
-        env:
-          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+      - name: Validate image tag
         run: |
-          cat > .env <<EOF
-          DB_PASSWORD=$DB_PASSWORD
-          EOF
-
+          if [[ -z "$IMAGE_TAG" || ! "$IMAGE_TAG" =~ ^[a-f0-9]{7,40}$ ]]; then
+            echo "::error::Invalid IMAGE_TAG: '$IMAGE_TAG'"
+            exit 1
+          fi
+          echo "Deploying images with tag: $IMAGE_TAG"
 
       - name: Login to GHCR
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
-          username: ${{ github.actor }}
+          username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-
-      - name: Deploy
-        env:
-          IMAGE_TAG: ${{ needs.build.outputs.image_tag }}
+      - name: Deploy with rollback
         run: |
           set -Eeuo pipefail
 
-          STATE_DIR="$HOME/project-deploy"
+          STATE_DIR="${GITHUB_WORKSPACE}/.deploy-state"
           STATE_FILE="$STATE_DIR/current_tag"
-
           mkdir -p "$STATE_DIR"
 
-          NEW_TAG="$IMAGE_TAG"
-
-          echo "New version: $NEW_TAG"
-
-          if [ -f "$STATE_FILE" ]; then
+          OLD_TAG=""
+          if [[ -f "$STATE_FILE" ]]; then
             OLD_TAG=$(cat "$STATE_FILE")
-            echo "Current version: $OLD_TAG"
+            echo "Current active version: $OLD_TAG"
           else
-            OLD_TAG=""
-            echo "No previous version found."
+            echo "No previous version found (fresh deploy)."
           fi
 
+          cleanup() {
+            rm -f "${GITHUB_WORKSPACE}/.env" 2>/dev/null || true
+            docker logout ghcr.io 2>/dev/null || true
+          }
+          trap cleanup EXIT
 
-          export IMAGE_TAG="$NEW_TAG"
+          # ── Create .env with ALL variables ──
+          cat > "${GITHUB_WORKSPACE}/.env" <<'ENVFILE'
+DB_HOST=db
+DB_NAME=notesdb
+DB_USER=postgres
+DB_PASSWORD=${DB_PASSWORD}
+IMAGE_TAG=${IMAGE_TAG}
+IMAGE_OWNER=${IMAGE_OWNER}
+ENVFILE
 
+          envsubst < "${GITHUB_WORKSPACE}/.env" > "${GITHUB_WORKSPACE}/.env.tmp"
+          mv "${GITHUB_WORKSPACE}/.env.tmp" "${GITHUB_WORKSPACE}/.env"
+          chmod 600 "${GITHUB_WORKSPACE}/.env"
 
-          echo "Pulling new images..."
-          docker compose pull
+          echo "--- .env contents (password hidden) ---"
+          grep -v "DB_PASSWORD" "${GITHUB_WORKSPACE}/.env" || true
+          echo "---------------------------------------"
 
+          # ── Pull only app images ──
+          echo "Pulling backend & frontend images..."
+          IMAGE_TAG="$IMAGE_TAG" docker compose -f docker-compose.yml pull backend frontend
 
+          # ── Deploy ──
           echo "Starting new version..."
+          if IMAGE_TAG="$IMAGE_TAG" docker compose -f docker-compose.yml up -d --wait --wait-timeout 90; then
+            echo "✅ Deployment successful!"
+            echo "$IMAGE_TAG" > "$STATE_FILE"
+            IMAGE_TAG="$IMAGE_TAG" docker compose -f docker-compose.yml ps
 
-          if docker compose up -d --wait --wait-timeout 60; then
-
-            echo "Deployment successful."
-
-            echo "$NEW_TAG" > "$STATE_FILE"
-
-            docker compose ps
-
+            docker image prune -af --filter "until=168h" || true
           else
+            echo "::error::Deployment failed! Initiating rollback..."
 
-            echo "Deployment failed!"
+            if [[ -n "$OLD_TAG" ]]; then
+              echo "Rolling back to verified version: $OLD_TAG..."
 
-            if [ -n "$OLD_TAG" ]; then
+              cat > "${GITHUB_WORKSPACE}/.env" <<'ENVFILE'
+DB_HOST=db
+DB_NAME=notesdb
+DB_USER=postgres
+DB_PASSWORD=${DB_PASSWORD}
+IMAGE_TAG=${IMAGE_TAG}
+IMAGE_OWNER=${IMAGE_OWNER}
+ENVFILE
+              envsubst < "${GITHUB_WORKSPACE}/.env" > "${GITHUB_WORKSPACE}/.env.tmp"
+              mv "${GITHUB_WORKSPACE}/.env.tmp" "${GITHUB_WORKSPACE}/.env"
+              chmod 600 "${GITHUB_WORKSPACE}/.env"
 
-              echo "Rolling back..."
-
-              export IMAGE_TAG="$OLD_TAG"
-
-              docker compose pull
-              docker compose up -d --wait --wait-timeout 60
-
+              IMAGE_TAG="$OLD_TAG" docker compose -f docker-compose.yml up -d --wait --wait-timeout 90
               echo "$OLD_TAG" > "$STATE_FILE"
-
+              echo "✅ Rollback successful."
             else
-
-              exit 1
-
+              echo "::error::Critical: No previous version available for rollback."
             fi
-
             exit 1
+          fi
 
-          fi     
+      - name: Cleanup workspace
+        if: always()
+        run: rm -rf "${GITHUB_WORKSPACE}"/*

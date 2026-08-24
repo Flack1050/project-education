@@ -193,3 +193,13 @@ def add_note():
 
     finally:
         conn.close()
+
+
+if __name__ == "__main__":
+    wait_for_database()
+    init_database()
+
+    app.run(
+        host="0.0.0.0",
+        port=5000
+    )

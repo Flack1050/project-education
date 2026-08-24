@@ -1,52 +1,170 @@
 <!DOCTYPE html>
-<html>
+
+<html lang="en">
+
 <head>
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
     <title>Notes App</title>
 </head>
+
+
 <body>
 
-<h1>Notes</h1>
+    <h1>Notes</h1>
 
-<input id="noteInput" type="text">
-<button onclick="addNote()">Add</button>
 
-<ul id="notes"></ul>
+    <input
+        id="noteInput"
+        type="text"
+        placeholder="Write a note..."
+    >
 
-<script>
-async function loadNotes() {
-    const response = await fetch("/api/notes");
-    const notes = await response.json();
+    <button onclick="addNote()">
+        Add
+    </button>
 
-    const list = document.getElementById("notes");
-    list.innerHTML = "";
 
-    notes.forEach(note => {
-        const li = document.createElement("li");
-        li.innerText = note.content;
-        list.appendChild(li);
-    });
-}
+    <p id="error"></p>
 
-async function addNote() {
-    const input = document.getElementById("noteInput");
 
-    await fetch("/api/notes", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-            content: input.value
-        })
-    });
+    <ul id="notes"></ul>
 
-    input.value = "";
 
-    loadNotes();
-}
+    <script>
 
-loadNotes();
-</script>
+        const errorElement =
+            document.getElementById("error");
+
+
+        function showError(message) {
+            errorElement.textContent = message;
+        }
+
+
+        async function loadNotes() {
+
+            try {
+
+                const response =
+                    await fetch("/api/notes");
+
+
+                if (!response.ok) {
+                    throw new Error(
+                        `Request failed: ${response.status}`
+                    );
+                }
+
+
+                const notes =
+                    await response.json();
+
+
+                const list =
+                    document.getElementById("notes");
+
+
+                list.innerHTML = "";
+
+
+                notes.forEach(note => {
+
+                    const li =
+                        document.createElement("li");
+
+
+                    li.innerText =
+                        note.content;
+
+
+                    list.appendChild(li);
+
+                });
+
+
+                showError("");
+
+            } catch (error) {
+
+                console.error(error);
+
+                showError(
+                    "Could not load notes"
+                );
+
+            }
+
+        }
+
+
+        async function addNote() {
+
+            const input =
+                document.getElementById("noteInput");
+
+
+            const content =
+                input.value.trim();
+
+
+            if (!content) {
+                return;
+            }
+
+
+            try {
+
+                const response =
+                    await fetch("/api/notes", {
+                        method: "POST",
+
+                        headers: {
+                            "Content-Type":
+                                "application/json"
+                        },
+
+                        body: JSON.stringify({
+                            content: content
+                        })
+                    });
+
+
+                if (!response.ok) {
+                    throw new Error(
+                        `Request failed: ${response.status}`
+                    );
+                }
+
+
+                input.value = "";
+
+
+                await loadNotes();
+
+
+            } catch (error) {
+
+                console.error(error);
+
+                showError(
+                    "Could not add note"
+                );
+
+            }
+
+        }
+
+
+        loadNotes();
+
+    </script>
 
 </body>
+
 </html>

@@ -136,6 +136,7 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: self-hosted
     timeout-minutes: 10
+
     concurrency:
       group: production-deploy
       cancel-in-progress: false
@@ -150,12 +151,14 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Validate image tag
+        shell: bash
         run: |
           if [[ -z "$IMAGE_TAG" || ! "$IMAGE_TAG" =~ ^[a-f0-9]{7,40}$ ]]; then
             echo "::error::Invalid IMAGE_TAG: '$IMAGE_TAG'"
             exit 1
           fi
-          echo "Deploying images with tag: $IMAGE_TAG"
+
+          echo "Deploying tag: $IMAGE_TAG"
 
       - name: Login to GHCR
         uses: docker/login-action@v3
@@ -165,84 +168,94 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Deploy with rollback
+        shell: bash
         run: |
           set -Eeuo pipefail
 
           STATE_DIR="${GITHUB_WORKSPACE}/.deploy-state"
           STATE_FILE="$STATE_DIR/current_tag"
+
           mkdir -p "$STATE_DIR"
 
           OLD_TAG=""
+
           if [[ -f "$STATE_FILE" ]]; then
             OLD_TAG=$(cat "$STATE_FILE")
-            echo "Current active version: $OLD_TAG"
+            echo "Previous version: $OLD_TAG"
           else
-            echo "No previous version found (fresh deploy)."
+            echo "No previous deployment found"
           fi
 
-          cleanup() {
-            rm -f "${GITHUB_WORKSPACE}/.env" 2>/dev/null || true
-            docker logout ghcr.io 2>/dev/null || true
-          }
-          trap cleanup EXIT
 
-          # ── Create .env with ALL variables ──
-          cat > "${GITHUB_WORKSPACE}/.env" <<'ENVFILE'
+          create_env() {
+            cat > "${GITHUB_WORKSPACE}/.env" <<ENVFILE
 DB_HOST=db
 DB_NAME=notesdb
 DB_USER=postgres
 DB_PASSWORD=${DB_PASSWORD}
-IMAGE_TAG=${IMAGE_TAG}
+IMAGE_TAG=${1}
 IMAGE_OWNER=${IMAGE_OWNER}
 ENVFILE
 
-          envsubst < "${GITHUB_WORKSPACE}/.env" > "${GITHUB_WORKSPACE}/.env.tmp"
-          mv "${GITHUB_WORKSPACE}/.env.tmp" "${GITHUB_WORKSPACE}/.env"
-          chmod 600 "${GITHUB_WORKSPACE}/.env"
+            chmod 600 "${GITHUB_WORKSPACE}/.env"
+          }
 
-          echo "--- .env contents (password hidden) ---"
-          grep -v "DB_PASSWORD" "${GITHUB_WORKSPACE}/.env" || true
-          echo "---------------------------------------"
 
-          # ── Pull only app images ──
-          echo "Pulling backend & frontend images..."
-          IMAGE_TAG="$IMAGE_TAG" docker compose -f docker-compose.yml pull backend frontend
+          echo "Creating environment..."
+          create_env "$IMAGE_TAG"
 
-          # ── Deploy ──
-          echo "Starting new version..."
-          if IMAGE_TAG="$IMAGE_TAG" docker compose -f docker-compose.yml up -d --wait --wait-timeout 90; then
-            echo "✅ Deployment successful!"
+
+          echo "Pulling images..."
+          IMAGE_TAG="$IMAGE_TAG" \
+          docker compose -f docker-compose.yml pull backend frontend
+
+
+          echo "Starting deployment..."
+
+          if IMAGE_TAG="$IMAGE_TAG" \
+             docker compose -f docker-compose.yml up -d --wait --wait-timeout 90
+
+          then
+
+            echo "Deployment successful"
+
             echo "$IMAGE_TAG" > "$STATE_FILE"
-            IMAGE_TAG="$IMAGE_TAG" docker compose -f docker-compose.yml ps
+
+            docker compose ps
 
             docker image prune -af --filter "until=168h" || true
+
+
           else
-            echo "::error::Deployment failed! Initiating rollback..."
+
+            echo "::error::Deployment failed"
 
             if [[ -n "$OLD_TAG" ]]; then
-              echo "Rolling back to verified version: $OLD_TAG..."
 
-              cat > "${GITHUB_WORKSPACE}/.env" <<'ENVFILE'
-DB_HOST=db
-DB_NAME=notesdb
-DB_USER=postgres
-DB_PASSWORD=${DB_PASSWORD}
-IMAGE_TAG=${IMAGE_TAG}
-IMAGE_OWNER=${IMAGE_OWNER}
-ENVFILE
-              envsubst < "${GITHUB_WORKSPACE}/.env" > "${GITHUB_WORKSPACE}/.env.tmp"
-              mv "${GITHUB_WORKSPACE}/.env.tmp" "${GITHUB_WORKSPACE}/.env"
-              chmod 600 "${GITHUB_WORKSPACE}/.env"
+              echo "Rollback to $OLD_TAG"
 
-              IMAGE_TAG="$OLD_TAG" docker compose -f docker-compose.yml up -d --wait --wait-timeout 90
+              create_env "$OLD_TAG"
+
+              IMAGE_TAG="$OLD_TAG" \
+              docker compose -f docker-compose.yml up -d --wait --wait-timeout 90
+
               echo "$OLD_TAG" > "$STATE_FILE"
-              echo "✅ Rollback successful."
+
+              echo "Rollback completed"
+
             else
-              echo "::error::Critical: No previous version available for rollback."
+
+              echo "::error::No rollback version available"
+
             fi
+
             exit 1
+
           fi
 
-      - name: Cleanup workspace
+
+      - name: Cleanup
         if: always()
-        run: rm -rf "${GITHUB_WORKSPACE}"/*
+        shell: bash
+        run: |
+          rm -f "${GITHUB_WORKSPACE}/.env"

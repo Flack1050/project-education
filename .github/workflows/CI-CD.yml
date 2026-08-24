@@ -62,16 +62,24 @@ jobs:
           DB_USER: postgres
           DB_PASSWORD: postgres
         run: |
-          venv/bin/python app.py &
+          venv/bin/python app.py > backend.log 2>&1 &
+          PID=$!
+          echo "Backend PID: $PID"
           echo "Waiting for backend..."
-          for i in {1..30}; do
+          for i in {1..60}; do
             if curl -fs http://localhost:5000/health > /dev/null 2>&1; then
-              echo "Backend is ready"
+              echo "Backend is ready (after ${i}s)"
               exit 0
+            fi
+            if ! kill -0 $PID 2>/dev/null; then
+              echo "Backend crashed! Logs:"
+              cat backend.log
+              exit 1
             fi
             sleep 1
           done
-          echo "Backend failed to start"
+          echo "Backend failed to start after 60s. Logs:"
+          cat backend.log
           exit 1
 
       - name: Test API

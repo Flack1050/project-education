@@ -174,11 +174,9 @@ jobs:
 
           STATE_DIR="${GITHUB_WORKSPACE}/.deploy-state"
           STATE_FILE="$STATE_DIR/current_tag"
-
           mkdir -p "$STATE_DIR"
 
           OLD_TAG=""
-
           if [[ -f "$STATE_FILE" ]]; then
             OLD_TAG=$(cat "$STATE_FILE")
             echo "Previous version: $OLD_TAG"
@@ -186,71 +184,44 @@ jobs:
             echo "No previous deployment found"
           fi
 
-
           create_env() {
-            cat > "${GITHUB_WORKSPACE}/.env" <<ENVFILE
-DB_HOST=db
-DB_NAME=notesdb
-DB_USER=postgres
-DB_PASSWORD=${DB_PASSWORD}
-IMAGE_TAG=${1}
-IMAGE_OWNER=${IMAGE_OWNER}
-ENVFILE
-
+            local tag="$1"
+            printf 'DB_HOST=db\nDB_NAME=notesdb\nDB_USER=postgres\nDB_PASSWORD=%s\nIMAGE_TAG=%s\nIMAGE_OWNER=%s\n' \
+              "$DB_PASSWORD" "$tag" "$IMAGE_OWNER" > "${GITHUB_WORKSPACE}/.env"
             chmod 600 "${GITHUB_WORKSPACE}/.env"
           }
 
-
           echo "Creating environment..."
           create_env "$IMAGE_TAG"
-
 
           echo "Pulling images..."
           IMAGE_TAG="$IMAGE_TAG" \
           docker compose -f docker-compose.yml pull backend frontend
 
-
           echo "Starting deployment..."
-
           if IMAGE_TAG="$IMAGE_TAG" \
              docker compose -f docker-compose.yml up -d --wait --wait-timeout 90
-
           then
-
             echo "Deployment successful"
-
             echo "$IMAGE_TAG" > "$STATE_FILE"
-
             docker compose ps
-
             docker image prune -af --filter "until=168h" || true
-
-
           else
-
             echo "::error::Deployment failed"
 
             if [[ -n "$OLD_TAG" ]]; then
-
               echo "Rollback to $OLD_TAG"
-
               create_env "$OLD_TAG"
 
               IMAGE_TAG="$OLD_TAG" \
               docker compose -f docker-compose.yml up -d --wait --wait-timeout 90
 
               echo "$OLD_TAG" > "$STATE_FILE"
-
               echo "Rollback completed"
-
             else
-
               echo "::error::No rollback version available"
-
             fi
-
             exit 1
-
           fi
 
 

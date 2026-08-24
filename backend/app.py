@@ -127,16 +127,6 @@ def metrics():
     )
 
 
-@app.route("/health", methods=["GET"])
-def health():
-    try:
-        conn = get_connection()
-        conn.close()
-        return jsonify({"status": "ok"}), 200
-    except Exception as e:
-        return jsonify({"status": "error", "db": str(e)}), 503
-
-
 @app.route("/notes", methods=["GET"])
 def get_notes():
     conn = get_connection()
@@ -172,15 +162,12 @@ def add_note():
             "error": "content is required"
         }), 400
 
-
     content = data["content"].strip()
-
 
     if not content:
         return jsonify({
             "error": "content cannot be empty"
         }), 400
-
 
     conn = get_connection()
 

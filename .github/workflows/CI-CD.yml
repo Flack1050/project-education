@@ -62,23 +62,46 @@ jobs:
           DB_USER: postgres
           DB_PASSWORD: postgres
         run: |
+          # Диагностика: проверим импорты ДО запуска
+          echo "Checking imports..."
+          venv/bin/python -c "
+          import sys
+          try:
+              import flask
+              import flask_cors
+              import psycopg2
+              import prometheus_client
+              print('All imports OK')
+          except Exception as e:
+              print('IMPORT ERROR:', e)
+              sys.exit(1)
+          "
+          
+          echo "Starting backend..."
           venv/bin/python app.py > backend.log 2>&1 &
           PID=$!
-          echo "Backend PID: $PID"
-          echo "Waiting for backend..."
+          sleep 2
+          
+          if ! kill -0 $PID 2>/dev/null; then
+            echo "=== BACKEND CRASHED ==="
+            cat backend.log
+            exit 1
+          fi
+          
+          echo "Waiting for /health..."
           for i in {1..60}; do
             if curl -fs http://localhost:5000/health > /dev/null 2>&1; then
-              echo "Backend is ready (after ${i}s)"
+              echo "Backend ready after ${i}s"
               exit 0
             fi
             if ! kill -0 $PID 2>/dev/null; then
-              echo "Backend crashed! Logs:"
+              echo "=== BACKEND DIED ==="
               cat backend.log
               exit 1
             fi
             sleep 1
           done
-          echo "Backend failed to start after 60s. Logs:"
+          echo "Timeout"
           cat backend.log
           exit 1
 

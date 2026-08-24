@@ -127,6 +127,16 @@ def metrics():
     )
 
 
+@app.route("/health", methods=["GET"])
+def health():
+    try:
+        conn = get_connection()
+        conn.close()
+        return jsonify({"status": "ok"}), 200
+    except Exception as e:
+        return jsonify({"status": "error", "db": str(e)}), 503
+
+
 @app.route("/notes", methods=["GET"])
 def get_notes():
     conn = get_connection()

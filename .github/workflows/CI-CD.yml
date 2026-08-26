@@ -175,6 +175,7 @@ jobs:
       IMAGE_TAG: ${{ needs.build.outputs.image_tag }}
       IMAGE_OWNER: ${{ needs.build.outputs.image_owner_lower }}
       DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+      GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
 
     steps:
       - name: Checkout repository

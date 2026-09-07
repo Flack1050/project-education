@@ -7,11 +7,30 @@ pipeline {
         IMAGE_TAG = "${BUILD_NUMBER}"
     }
 
+    parameters {
+        choice(
+            name: 'BUILD_TARGET',
+            choices: ['all', 'frontend', 'backend'],
+            description: 'Choose what to build'
+        )
+    }
+
     stages {
 
         stage('Checkout') {
             steps {
                 echo 'Repository was cloned successfully'
+            }
+        }
+
+        stage('Environment') {
+            steps {
+                sh '''
+                    echo "Frontend image: $FRONTEND_IMAGE"
+                    echo "Backend image: $BACKEND_IMAGE"
+                    echo "Image tag: $IMAGE_TAG"
+                    echo "Build number: $BUILD_NUMBER"
+                 '''
             }
         }
 
@@ -33,17 +52,6 @@ pipeline {
                 sh 'docker build -t $BACKEND_IMAGE:$IMAGE_TAG ./backend'
             }
         }
-         
-        stage('Environment') {
-            steps {
-                sh '''
-                    echo "Frontend image: $FRONTEND_IMAGE"
-                    echo "Backend image: $BACKEND_IMAGE"
-                    echo "Image tag: $IMAGE_TAG"
-                    echo "Build number: $BUILD_NUMBER"
-                 '''
-            }
-        }  
     }
 
     post {

@@ -24,3 +24,4 @@ http://localhost:8081/api/notes
 
 📦 backend для контейнеров
    http://backend:5000
+# polling test

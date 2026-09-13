@@ -141,7 +141,7 @@ pipeline {
                         ssh -o StrictHostKeyChecking=no \
                             $VPS_USER@$VPS_HOST \
                             "cd $VPS_PROJECT && \
-                             sed -i 's/:.*/:${IMAGE_TAG}/' docker-compose.yml && \
+                             sed -i 's/^IMAGE_TAG=.*/IMAGE_TAG=$IMAGE_TAG/' .env && \                           
                              docker compose pull && \
                              docker compose up -d"
                     '''

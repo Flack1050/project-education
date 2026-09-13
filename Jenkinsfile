@@ -9,6 +9,10 @@ pipeline {
         GHCR_NAMESPACE = 'flack1050'
 
         IMAGE_TAG = "${BUILD_NUMBER}"
+
+        VPS_HOST = '195.19.202.68'
+        VPS_USER = 'ivan'
+        VPS_PROJECT = '/home/ivan/project'
     }
 
     parameters {
@@ -129,15 +133,43 @@ pipeline {
                 '''
             }
         }
+
+        stage('Deploy to VPS') {
+            steps {
+                sshagent(['vps-deploy']) {
+                    sh '''
+                        ssh -o StrictHostKeyChecking=no \
+                            $VPS_USER@$VPS_HOST \
+                            "cd $VPS_PROJECT && \
+                             sed -i 's/:.*/:${IMAGE_TAG}/' docker-compose.yml && \
+                             docker compose pull && \
+                             docker compose up -d"
+                    '''
+                }
+            }
+        }
+
+        stage('Check Deployment') {
+            steps {
+                sshagent(['vps-deploy']) {
+                    sh '''
+                        ssh -o StrictHostKeyChecking=no \
+                            $VPS_USER@$VPS_HOST \
+                            "cd $VPS_PROJECT && docker compose ps"
+                    '''
+                }
+            }
+        }
     }
 
     post {
         success {
-            echo 'CI pipeline completed successfully!'
+            echo "CI/CD pipeline completed successfully!"
+            echo "Deployed version: $IMAGE_TAG"
         }
 
         failure {
-            echo 'CI pipeline failed!'
+            echo 'CI/CD pipeline failed!'
         }
 
         always {

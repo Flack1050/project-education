@@ -52,35 +52,42 @@ pipeline {
             }
         }
 
-        stage('Build Frontend') {
-            when {
-                expression {
-                    params.BUILD_TARGET == 'all' ||
-                    params.BUILD_TARGET == 'frontend'
-                }
-            }
-            steps {
-                dockerBuild(
-                    "$GHCR_REGISTRY/$GHCR_NAMESPACE/$FRONTEND_IMAGE",
-                    IMAGE_TAG,
-                    "./frontend"
-                )
-            }
-        }
+        stage('Build') {
+            parallel {
 
-        stage('Build Backend') {
-            when {
-                expression {
-                    params.BUILD_TARGET == 'all' ||
-                    params.BUILD_TARGET == 'backend'
+                stage('Build Frontend') {
+                    when {
+                        expression {
+                            params.BUILD_TARGET == 'all' ||
+                            params.BUILD_TARGET == 'frontend'
+                        }
+                    }
+
+                    steps {
+                        dockerBuild(
+                            "$GHCR_REGISTRY/$GHCR_NAMESPACE/$FRONTEND_IMAGE",
+                            IMAGE_TAG,
+                            "./frontend"
+                        )
+                    }
                 }
-            }
-            steps {
-                dockerBuild(
-                    "$GHCR_REGISTRY/$GHCR_NAMESPACE/$BACKEND_IMAGE",
-                    IMAGE_TAG,
-                    "./backend"
-                )
+
+                stage('Build Backend') {
+                    when {
+                        expression {
+                            params.BUILD_TARGET == 'all' ||
+                            params.BUILD_TARGET == 'backend'
+                        }
+                    }
+
+                    steps {
+                        dockerBuild(
+                            "$GHCR_REGISTRY/$GHCR_NAMESPACE/$BACKEND_IMAGE",
+                            IMAGE_TAG,
+                            "./backend"
+                        )
+                    }
+                }
             }
         }
 
@@ -93,40 +100,47 @@ pipeline {
             }
         }
 
-        stage('Push Frontend') {
-            when {
-                expression {
-                    params.BUILD_TARGET == 'all' ||
-                    params.BUILD_TARGET == 'frontend'
-                }
-            }
-            steps {
-                dockerPush(
-                    "$GHCR_REGISTRY/$GHCR_NAMESPACE/$FRONTEND_IMAGE",
-                    IMAGE_TAG
-                )
-            }
-        }
+        stage('Push') {
+            parallel {
 
-        stage('Push Backend') {
-            when {
-                expression {
-                    params.BUILD_TARGET == 'all' ||
-                    params.BUILD_TARGET == 'backend'
+                stage('Push Frontend') {
+                    when {
+                        expression {
+                            params.BUILD_TARGET == 'all' ||
+                            params.BUILD_TARGET == 'frontend'
+                        }
+                    }
+
+                    steps {
+                        dockerPush(
+                            "$GHCR_REGISTRY/$GHCR_NAMESPACE/$FRONTEND_IMAGE",
+                            IMAGE_TAG
+                        )
+                    }
                 }
-            }
-            steps {
-                dockerPush(
-                    "$GHCR_REGISTRY/$GHCR_NAMESPACE/$BACKEND_IMAGE",
-                    IMAGE_TAG
-                )
+
+                stage('Push Backend') {
+                    when {
+                        expression {
+                            params.BUILD_TARGET == 'all' ||
+                            params.BUILD_TARGET == 'backend'
+                        }
+                    }
+
+                    steps {
+                        dockerPush(
+                            "$GHCR_REGISTRY/$GHCR_NAMESPACE/$BACKEND_IMAGE",
+                            IMAGE_TAG
+                        )
+                    }
+                }
             }
         }
 
         stage('Deploy to VPS') {
             steps {
                 deployCompose(
-                    'vps-deploy',
+                    'ivan',
                     VPS_USER,
                     VPS_HOST,
                     VPS_PROJECT,
@@ -138,7 +152,7 @@ pipeline {
         stage('Check Deployment') {
             steps {
                 checkCompose(
-                    'vps-deploy',
+                    'ivan',
                     VPS_USER,
                     VPS_HOST,
                     VPS_PROJECT

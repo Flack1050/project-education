@@ -140,7 +140,7 @@ pipeline {
         stage('Deploy to VPS') {
             steps {
                 deployCompose(
-                    'ivan',
+                    'vps-deploy',
                     VPS_USER,
                     VPS_HOST,
                     VPS_PROJECT,
@@ -152,7 +152,7 @@ pipeline {
         stage('Check Deployment') {
             steps {
                 checkCompose(
-                    'ivan',
+                    'vps-deploy',
                     VPS_USER,
                     VPS_HOST,
                     VPS_PROJECT

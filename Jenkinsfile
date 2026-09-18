@@ -1,178 +1,18 @@
-@Library('devops-library') _
-
 pipeline {
     agent any
 
-    environment {
-        FRONTEND_IMAGE = 'notes-frontend'
-        BACKEND_IMAGE = 'notes-backend'
-
-        GHCR_REGISTRY = 'ghcr.io'
-        GHCR_NAMESPACE = 'flack1050'
-
-        IMAGE_TAG = "${BUILD_NUMBER}"
-
-        VPS_HOST = '195.19.202.68'
-        VPS_USER = 'ivan'
-        VPS_PROJECT = '/home/ivan/project'
-    }
-
-    parameters {
-        choice(
-            name: 'BUILD_TARGET',
-            choices: ['all', 'frontend', 'backend'],
-            description: 'Choose what to build'
-        )
-    }
-
     stages {
-
-        stage('Checkout') {
+        stage('Branch Info') {
             steps {
-                echo 'Repository was cloned successfully'
+                echo "Branch: ${env.BRANCH_NAME}"
+                echo "Build: ${env.BUILD_NUMBER}"
             }
         }
 
-        stage('Environment') {
+        stage('Test') {
             steps {
-                sh '''
-                    echo "Frontend image: $FRONTEND_IMAGE"
-                    echo "Backend image: $BACKEND_IMAGE"
-                    echo "Image tag: $IMAGE_TAG"
-                    echo "Build number: $BUILD_NUMBER"
-                    echo "Build target: $BUILD_TARGET"
-                '''
+                echo "Hello from ${env.BRANCH_NAME}!"
             }
-        }
-
-        stage('Check Docker') {
-            steps {
-                sh 'docker --version'
-                sh 'docker compose version'
-            }
-        }
-
-        stage('Build') {
-            parallel {
-
-                stage('Build Frontend') {
-                    when {
-                        expression {
-                            params.BUILD_TARGET == 'all' ||
-                            params.BUILD_TARGET == 'frontend'
-                        }
-                    }
-
-                    steps {
-                        dockerBuild(
-                            "$GHCR_REGISTRY/$GHCR_NAMESPACE/$FRONTEND_IMAGE",
-                            IMAGE_TAG,
-                            "./frontend"
-                        )
-                    }
-                }
-
-                stage('Build Backend') {
-                    when {
-                        expression {
-                            params.BUILD_TARGET == 'all' ||
-                            params.BUILD_TARGET == 'backend'
-                        }
-                    }
-
-                    steps {
-                        dockerBuild(
-                            "$GHCR_REGISTRY/$GHCR_NAMESPACE/$BACKEND_IMAGE",
-                            IMAGE_TAG,
-                            "./backend"
-                        )
-                    }
-                }
-            }
-        }
-
-        stage('Login to GHCR') {
-            steps {
-                dockerLogin(
-                    GHCR_REGISTRY,
-                    'github-ghcr'
-                )
-            }
-        }
-
-        stage('Push') {
-            parallel {
-
-                stage('Push Frontend') {
-                    when {
-                        expression {
-                            params.BUILD_TARGET == 'all' ||
-                            params.BUILD_TARGET == 'frontend'
-                        }
-                    }
-
-                    steps {
-                        dockerPush(
-                            "$GHCR_REGISTRY/$GHCR_NAMESPACE/$FRONTEND_IMAGE",
-                            IMAGE_TAG
-                        )
-                    }
-                }
-
-                stage('Push Backend') {
-                    when {
-                        expression {
-                            params.BUILD_TARGET == 'all' ||
-                            params.BUILD_TARGET == 'backend'
-                        }
-                    }
-
-                    steps {
-                        dockerPush(
-                            "$GHCR_REGISTRY/$GHCR_NAMESPACE/$BACKEND_IMAGE",
-                            IMAGE_TAG
-                        )
-                    }
-                }
-            }
-        }
-
-        stage('Deploy to VPS') {
-            steps {
-                deployCompose(
-                    'vps-deploy',
-                    VPS_USER,
-                    VPS_HOST,
-                    VPS_PROJECT,
-                    IMAGE_TAG
-                )
-            }
-        }
-
-        stage('Check Deployment') {
-            steps {
-                checkCompose(
-                    'vps-deploy',
-                    VPS_USER,
-                    VPS_HOST,
-                    VPS_PROJECT
-                )
-            }
-        }
-    }
-
-    post {
-        success {
-            echo "CI/CD pipeline completed successfully!"
-            echo "Deployed version: $IMAGE_TAG"
-        }
-
-        failure {
-            echo 'CI/CD pipeline failed!'
-        }
-
-        always {
-            echo 'Pipeline finished'
         }
     }
 }

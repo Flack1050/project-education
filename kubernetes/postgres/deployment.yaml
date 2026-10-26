@@ -2,9 +2,12 @@ apiVersion: apps/v1
 kind: Deployment
 
 metadata:
+  namespace: education
   name: postgres
 
 spec:
+  strategy:
+    type: Recreate
   replicas: 1
 
   selector:
@@ -17,14 +20,33 @@ spec:
         app: postgres
 
     spec:
+      securityContext:
+        fsGroup: 70
+        fsGroupChangePolicy: OnRootMismatch
       containers:
         - name: postgres
           image: postgres:16-alpine
+          imagePullPolicy: IfNotPresent
 
           ports:
             - containerPort: 5432
 
+          startupProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres", "-d", "notesdb"]
+            periodSeconds: 5
+            failureThreshold: 30
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres", "-d", "notesdb"]
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres", "-d", "notesdb"]
+            periodSeconds: 10
           env:
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+
             - name: POSTGRES_DB
               value: notesdb
 

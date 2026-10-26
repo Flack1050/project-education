@@ -1,9 +1,11 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
+  namespace: education
   name: postgres-pvc
 spec:
-  storageClassName: local-path
+  storageClassName: ""
+  volumeName: education-postgres-pv
   accessModes:
     - ReadWriteOnce
   resources:

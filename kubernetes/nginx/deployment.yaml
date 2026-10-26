@@ -3,6 +3,7 @@ apiVersion: apps/v1
 kind: Deployment
 
 metadata:
+  namespace: education
   name: app-nginx
 
 spec:
@@ -20,11 +21,21 @@ spec:
     spec:
       containers:
         - name: nginx
-          image: nginx:alpine
+          image: notes-frontend:local
+          imagePullPolicy: Never
 
           ports:
             - containerPort: 80
 
+          readinessProbe:
+            httpGet:
+              path: /nginx-health
+              port: 80
+          livenessProbe:
+            httpGet:
+              path: /nginx-health
+              port: 80
+            periodSeconds: 10
           volumeMounts:
             - name: nginx-config
               mountPath: /etc/nginx/nginx.conf

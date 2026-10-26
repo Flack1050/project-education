@@ -1,9 +1,10 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
+  namespace: education
   name: backend
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: backend
@@ -12,11 +13,47 @@ spec:
       labels:
         app: backend
     spec:
+      initContainers:
+        - name: initialize-database
+          image: notes-backend:local
+          imagePullPolicy: Never
+          command: ["python", "-c"]
+          args:
+            - "import app; app.wait_for_database(); app.init_database()"
+          env:
+            - name: DB_HOST
+              value: postgres
+            - name: DB_NAME
+              value: notesdb
+            - name: DB_USER
+              value: postgres
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: POSTGRES_PASSWORD
       containers:
         - name: backend
-          image: ghcr.io/flack1050/notes-backend:latest
+          image: notes-backend:local
+          imagePullPolicy: Never
           ports:
             - containerPort: 5000
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            timeoutSeconds: 3
+          livenessProbe:
+            tcpSocket:
+              port: 5000
+            periodSeconds: 10
           env:
             - name: DB_HOST
               value: postgres

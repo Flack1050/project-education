@@ -2,10 +2,11 @@ apiVersion: apps/v1
 kind: Deployment
 
 metadata:
+  namespace: education
   name: frontend
 
 spec:
-  replicas: 2
+  replicas: 1
 
   selector:
     matchLabels:
@@ -19,7 +20,18 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: ghcr.io/flack1050/notes-frontend:latest
+          image: notes-frontend:local
+          imagePullPolicy: Never
 
           ports:
             - containerPort: 8080
+
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8080
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            periodSeconds: 10
